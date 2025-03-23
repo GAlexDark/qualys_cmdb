@@ -1,0 +1,137 @@
+#
+#  Copyright (c) Oleksii Gaienko, 2021
+#  Contact: galexsoftware@gmail.com
+#
+#
+
+version: '3.9'
+
+networks:
+  gsw_bridge:
+    driver: bridge
+    enable_ipv6: false
+    ipam:
+      config:
+        - subnet: "172.21.0.0/24"
+    driver_opts:
+      com.docker.network.bridge.name: br-usb
+      com.docker.network.bridge.enable_ip_masquerade: "true"
+
+services:
+  postgres:
+    build:
+      context: ./postgres
+#      dockerfile:
+      args:
+        PG_VER: ${PG_VER}
+        BUILD_VERSION: ${BUILD_VERSION}
+    image: postgres:${PG_VER}
+    container_name: "${PROJECT_NAME}_db"
+    hostname: postgres_db
+    ports:
+      - ${IPV4_MASK}:${PG_PORT}:5432
+    volumes:
+      - ${DOCKERS_DATA_ROOTDIR}/$COMPOSE_PROJECT_NAME/postgres/config/init:/docker-entrypoint-initdb.d/:ro # db init scripts
+      - ${DOCKERS_DATA_ROOTDIR}/$COMPOSE_PROJECT_NAME/postgres/db/data:/var/lib/postgresql/data:rw # PGDATA
+      - ${DOCKERS_DATA_ROOTDIR}/$COMPOSE_PROJECT_NAME/postgres/db/tbspaces:/var/lib/postgresql/tbspaces:rw # DB spaces
+      - ${DOCKERS_DATA_ROOTDIR}/$COMPOSE_PROJECT_NAME/postgres/import:/import:ro # import files to DB
+    user: 997:996 # pg-svc user:group
+    environment:
+      POSTGRES_USER: ${PG_ROOT_USER}
+      POSTGRES_PASSWORD: ${PG_ROOT_PASSWORD}
+      TZ: "Europe/Kiev"
+      #POSTGRES_INITDB_ARGS: --locale=uk_UA.UTF-8 --lc-collate=uk_UA.UTF-8 --lc-ctype=uk_UA.UTF-8 --encoding=UTF8
+      #POSTGRES_INITDB_ARGS: --locale=en_US.UTF-8 --lc-collate=en_US.UTF-8 --lc-ctype=en_US.UTF-8 --encoding=UTF8
+    restart: ${RESTART_MODE}
+    networks:
+      gsw_bridge:
+        ipv4_address: ${PG_IP}
+#    healthcheck:
+#      # ref: https://github.com/peter-evans/docker-compose-healthcheck
+#      # I get error if I using test without "-U postgres"
+#      test: ["CMD-SHELL", "pg_isready -U postgres -d gsw_security_audit"] 
+#      interval: 10s
+#      timeout: 5s
+#      retries: 5
+
+  pgadmin:
+#    build:
+#      context: ./pgadmin
+#      dockerfile:
+    image: dpage/pgadmin4:latest
+    container_name: "${PROJECT_NAME}_pgadmin"
+    hostname: postgres_admin
+    ports:
+      - ${IPV4_MASK}:${PGA_PORT1}:80
+      - ${IPV4_MASK}:${PGA_PORT2}:443
+    volumes:
+      - ${DOCKERS_DATA_ROOTDIR}/$COMPOSE_PROJECT_NAME/pgadmin/db:/var/lib/pgadmin:rw
+      - ${DOCKERS_DATA_ROOTDIR}/$COMPOSE_PROJECT_NAME/pgadmin/import:/var/lib/pgadmin/storage:rw
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGA_DEFAULT_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGA_DEFAULT_PASSWORD}
+      PGADMIN_DISABLE_POSTFIX: "enable"
+      PGADMIN_LISTEN_ADDRESS: ${IPV4_MASK}
+      TZ: Europe/Kiev
+      #PGADMIN_CONFIG_ENHANCED_COOKIE_PROTECTION: "true"
+      #PGADMIN_CONFIG_LOGIN_BANNER: "Authorised users only!"
+    restart: ${RESTART_MODE}
+    depends_on:
+#       postgres:
+#         condition: service_healthy
+      - postgres
+    networks:
+      gsw_bridge:
+        ipv4_address: ${PGA_IP}
+ 
+# https://www.metabase.com/docs/latest/operations-guide/running-metabase-on-docker.html
+# https://www.seektable.com/help/self-hosted-setup
+  
+  reporting:
+#    build:
+#      context: ./reporting
+#      dockerfile:    
+    image: metabase/metabase:${MB_VER}
+    container_name: "${PROJECT_NAME}_reporting"
+    hostname: postgres_reporting
+    ports:
+      - ${IPV4_MASK}:${MB_PORT}:3000
+    volumes:
+      - ${DOCKERS_DATA_ROOTDIR}/$COMPOSE_PROJECT_NAME/reporting/plugins:/plugins:rw # /plugins volume
+    user: 996:995 # mb-svc
+    environment:
+    # ref: https://www.metabase.com/docs/latest/operations-guide/environment-variables.html
+      TZ: "Europe/Kiev"
+      JAVA_TIMEZONE: "Europe/Kiev"
+      # formatMsgNoLookUps - workaround for CVE-2021-44228
+      JAVA_OPTS: "-Xmx1g -Dlog4j.formatMsgNoLookUps=true"
+      MB_REPORT_TIMEZONE: "Europe/Kiev"
+      MB_DB_TYPE: postgres
+      MB_DB_DBNAME: ${MB_DB_NAME}
+      MB_DB_HOST: ${PG_IP}
+      MB_DB_PORT: ${PG_PORT}
+      MB_DB_USER: ${MB_DB_USER}
+      MB_DB_PASS: ${MB_DB_PASS}
+      MB_SITE_NAME: "GSW Demo Reporting"
+      MB_EMOJI_IN_LOGS: "false"
+      # ref: https://www.metabase.com/docs/latest/operations-guide/encrypting-database-details-at-rest.html
+      MB_ENCRYPTION_SECRET_KEY: ${MB_ENCRYPTION_SECRETKEY}
+    restart: ${RESTART_MODE}
+    depends_on:
+#      postgres:
+#        condition: service_healthy      
+      - postgres
+    networks:
+      gsw_bridge:
+        ipv4_address: ${MB_IP}
+
+
+
+#https://www.metabase.com/docs/latest/operations-guide/start.html
+#
+#https://www.metabase.com/docs/latest/troubleshooting-guide/running.html
+#https://www.metabase.com/docs/latest/operations-guide/running-metabase-on-docker.html
+#https://www.metabase.com/docs/latest/operations-guide/log-configuration.html
+#https://www.metabase.com/docs/latest/operations-guide/java-versions.html
+#https://www.metabase.com/docs/latest/operations-guide/running-metabase-on-docker.html#adding-external-dependencies-or-plugins
+
