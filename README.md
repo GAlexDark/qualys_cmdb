@@ -1,4 +1,4 @@
-# qualys_cmdb
+# qualys & cmdb integration
 The Qualys and CMDB old integration project.
 This MVP project will be archived.
 
